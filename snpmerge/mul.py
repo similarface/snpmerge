@@ -334,7 +334,7 @@ def _sorted_file(path, sep, by, output_path):
     """
     df = pd.read_csv(path, sep=sep, low_memory=False)
     sorted_df = df.sort_values(by=by)
-    sorted_df.to_csv(output_path, index=False)
+    sorted_df.to_csv(output_path, index=False, sep=sep)
     return output_path
 
 

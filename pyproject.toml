@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "snpmerge"
-version = "0.3.0"
+version = "0.5.0"
 description = "高效的,低内存合并snp文件"
 authors = ["similarface,yangwubing"]
 
