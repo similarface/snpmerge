@@ -278,7 +278,8 @@ def merge_sorted_snp_dir(input_dir=None,
                          sep=',',
                          suffix=".csv",
                          output_dir_base=None,
-                         remove_flag=False):
+                         remove_flag=False,
+                         merge_max_workers=None):
     """
     合同排序后的文件目录
     :param input_dir:  输入目录
@@ -288,6 +289,7 @@ def merge_sorted_snp_dir(input_dir=None,
     :param suffix: 输入目录需要合并文件的后缀
     :param output_dir_base: 输出基目录
     :param remove_flag: 是否删除中间文件
+    :param merge_max_workers: 合并进程数目
     :return:
     """
     paths = [os.path.join(input_dir, _) for _ in os.listdir(input_dir) if _.endswith(suffix)]
@@ -296,7 +298,7 @@ def merge_sorted_snp_dir(input_dir=None,
     output_dir = tempfile.mkdtemp(prefix="merge_", dir=output_dir_base)
     logger.info(f"output_dir:{output_dir}")
     middle = int(len(paths) / 2)
-    with ProcessPoolExecutor() as executor:
+    with ProcessPoolExecutor(max_workers=merge_max_workers) as executor:
         to_do_map = {}
         itors = zip_longest(paths[0:middle], paths[middle:])
         for itor in itors:
@@ -317,7 +319,8 @@ def merge_sorted_snp_dir(input_dir=None,
         if remove_flag:
             logger.warning(f"remove dir: {input_dir}")
             shutil.rmtree(input_dir)
-        return merge_sorted_snp_dir(input_dir=output_dir, verbose=False, header_index_str=header_index_str, sep=sep, output_dir_base=output_dir_base, remove_flag=True)
+        return merge_sorted_snp_dir(input_dir=output_dir, verbose=False, header_index_str=header_index_str, sep=sep, output_dir_base=output_dir_base, remove_flag=True,
+                                    merge_max_workers=merge_max_workers)
 
 
 def _sorted_file(path, sep, by, output_path):
@@ -331,48 +334,28 @@ def _sorted_file(path, sep, by, output_path):
     """
     df = pd.read_csv(path, sep=sep, low_memory=False)
     sorted_df = df.sort_values(by=by)
-    sorted_df.to_csv(output_path, index=False)
+    sorted_df.to_csv(output_path, index=False, sep=sep)
     return output_path
 
 
-def merge_snp_dir(input_dir=None, sep=',', suffix=".csv", header_index_str='id,chrom,position,ref', verbose=False):
+def merge_snp_paths(paths, output=None, sep=',', suffix=".csv", header_index_str='id,chrom,position,ref', verbose=False, max_workers=None, merge_max_workers=None):
     """
     合并snp目录下的所有文件 文件可以不排序
-    :return:
-    """
-    header_index_str = header_index_str.rstrip(sep)
-    indexs = header_index_str.split(sep)
-    paths = [os.path.join(input_dir, _) for _ in os.listdir(input_dir) if _.endswith(suffix)]
-    output_dir = tempfile.mkdtemp(prefix="sorted_")
-    logger.info(f"Sorted input_dir: {input_dir} to {output_dir} ...")
-    ##########
-    with ProcessPoolExecutor() as executor:
-        to_do_map = {}
-        for path in paths:
-            output_path = tempfile.mktemp(dir=output_dir, suffix=suffix)
-            future = executor.submit(_sorted_file, path, sep, indexs, output_path)
-            to_do_map[future] = path
-        done_itor = futures.as_completed(to_do_map)
-        if not verbose:
-            done_itor = tqdm.tqdm(done_itor, total=len(to_do_map.keys()))
-        for future in done_itor:
-            future.result()
-    ##########
-    logger.info(f"Merge input_dir: {input_dir} to  ...")
-    output_dir_base = tempfile.mkdtemp(prefix="merge_root_")
-    return merge_sorted_snp_dir(input_dir=output_dir, verbose=False, header_index_str=header_index_str, sep=sep, suffix=suffix, output_dir_base=output_dir_base)
-
-
-def merge_snp_paths(paths, output=None, sep=',', suffix=".csv", header_index_str='id,chrom,position,ref', verbose=False):
-    """
-    合并snp目录下的所有文件 文件可以不排序
+    :param paths: 文件地址迭代器
+    :param output: 输出目录，不指定返回temp file
+    :param sep: 分隔符号
+    :param suffix: 后缀
+    :param header_index_str: 索引字符
+    :param verbose:
+    :param max_workers: 排序最大并行数目
+    :param merge_max_workers: 合并最大并行数目
     :return:
     """
     header_index_str = header_index_str.rstrip(sep)
     indexs = header_index_str.split(sep)
     output_dir = tempfile.mkdtemp(prefix="sorted_")
     logger.info(f"Sorted paths: {len(paths)} to {output_dir} ...")
-    with ProcessPoolExecutor() as executor:
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
         to_do_map = {}
         for path in paths:
             output_path = tempfile.mktemp(dir=output_dir, suffix=suffix)
@@ -385,9 +368,32 @@ def merge_snp_paths(paths, output=None, sep=',', suffix=".csv", header_index_str
             future.result()
     logger.info(f"Merge input_dir: {output_dir} to  ...")
     output_dir_base = tempfile.mkdtemp(prefix="merge_root_")
-    result_path = merge_sorted_snp_dir(input_dir=output_dir, verbose=False, header_index_str=header_index_str, sep=sep, suffix=suffix, output_dir_base=output_dir_base)
+    result_path = merge_sorted_snp_dir(input_dir=output_dir,
+                                       verbose=False,
+                                       header_index_str=header_index_str,
+                                       sep=sep, suffix=suffix,
+                                       output_dir_base=output_dir_base,
+                                       merge_max_workers=merge_max_workers)
     if output:
         shutil.copy(result_path, output)
         return output
     else:
         return result_path
+
+
+def merge_snp_dir(input_dir=None, sep=',', suffix=".csv", header_index_str='id,chrom,position,ref', verbose=False, output=None, max_workers=None, merge_max_workers=None):
+    """
+    合并snp目录下的所有文件 文件可以不排序
+    :param input_dir: 输入目录
+    :param output: 输出目录，不指定返回temp file
+    :param sep: 分隔符号
+    :param suffix: 后缀
+    :param header_index_str: 索引字符
+    :param verbose:
+    :param max_workers: 最大并行数目
+    :return:
+    """
+    paths = [os.path.join(input_dir, _) for _ in os.listdir(input_dir) if _.endswith(suffix)]
+    return merge_snp_paths(paths, output=output, sep=sep,
+                           suffix=suffix, header_index_str=header_index_str, verbose=verbose,
+                           max_workers=max_workers, merge_max_workers=merge_max_workers)
