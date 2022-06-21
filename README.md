@@ -58,6 +58,8 @@ id,chrom,position,ref,sample_03,sample_01,sample_02
 #### 安装
 ```bash 
 pip install snpmerge==0.2.0
+
+
 ```
 
 
