@@ -393,7 +393,6 @@ def merge_snp_dir(input_dir=None, sep=',', suffix=".csv", header_index_str='id,c
     :param max_workers: 最大并行数目
     :return:
     """
-    header_index_str = header_index_str.rstrip(sep)
     paths = [os.path.join(input_dir, _) for _ in os.listdir(input_dir) if _.endswith(suffix)]
     return merge_snp_paths(paths, output=output, sep=sep,
                            suffix=suffix, header_index_str=header_index_str, verbose=verbose,
